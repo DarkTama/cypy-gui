@@ -16,6 +16,7 @@ ENV/
 # OS specific
 .DS_Store
 Thumbs.db
+.vscode/
 
 # Python build and packaging
 *.egg-info/
