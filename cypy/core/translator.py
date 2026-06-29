@@ -31,6 +31,8 @@ def terjemahkan_mosaik(gambar_mosaik_pil, provider, target_language="Indonesian"
             examples = {
                 "english": ("Hello!", "Mother... wait..."),
                 "indonesian": ("Cepat bangun!", "Ibu... tunggu..."),
+                "japanese": ("早く起きて！", "お母さん…待って…"),
+                "mandarin": ("快点起床！", "妈妈……等等……"),
                 "spanish": ("¡Despierta rápido!", "Madre... espera..."),
                 "portuguese": ("Acorde rápido!", "Mãe... espere..."),
                 "javanese": ("Ndang tangi!", "Ibu... enteni..."),

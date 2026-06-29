@@ -8,6 +8,7 @@ from cypy.core.config import (
 from cypy.core.translator import proses_satu_gambar, mulai_ritual_pdf, proses_folder
 from cypy.core.providers import create_provider
 from cypy.core.utils import create_shortcut_if_first_run
+from cypy import __version__
 
 
 # ==========================================
@@ -41,14 +42,15 @@ def pilih_bahasa():
     print("│                                         │")
     print("│  [1] English                            │")
     print("│  [2] Indonesian                         │")
-    print("│  [3] Japanese (日本語)                   │")
-    print("│  [4] Spanish (Español)                  │")
-    print("│  [5] Portuguese (Português)             │")
-    print("│  [6] Javanese (Basa Jawa)               │")
-    print("│  [7] Custom (type your own)             │")
+    print("│  [3] Japanese (日本語)                  │")
+    print("│  [4] Mandarin (简体中文)                │")
+    print("│  [5] Spanish (Español)                  │")
+    print("│  [6] Portuguese (Português)             │")
+    print("│  [7] Javanese (Basa Jawa)               │")
+    print("│  [8] Custom (type your own)             │")
     print("└─────────────────────────────────────────┘")
 
-    lang_choice = input("Select choice / Pilih (1-7) [Default: 2]: ").strip()
+    lang_choice = input("Select choice / Pilih (1-8) [Default: 2]: ").strip()
     if lang_choice == "1":
         target_language = "English"
     elif lang_choice == "2":
@@ -56,12 +58,14 @@ def pilih_bahasa():
     elif lang_choice == "3":
         target_language = "Japanese"
     elif lang_choice == "4":
-        target_language = "Spanish"
+        target_language = "Mandarin"
     elif lang_choice == "5":
-        target_language = "Portuguese"
+        target_language = "Spanish"
     elif lang_choice == "6":
-        target_language = "Javanese"
+        target_language = "Portuguese"
     elif lang_choice == "7":
+        target_language = "Javanese"
+    elif lang_choice == "8":
         custom = input("Type your target language (e.g. Korean, Thai, Arabic): ").strip()
         if custom:
             target_language = custom.title()
@@ -78,7 +82,7 @@ def pilih_provider():
     print("\n┌─────────────────────────────────────────┐")
     print("│  API Provider:                          │")
     print("│                                         │")
-    print("│  [1] Google Gemini (Default, free tier)  │")
+    print("│  [1] Google Gemini (Default, free tier) │")
     print("│  [2] OpenRouter (100+ models)           │")
     print("│  [3] OpenAI (GPT-4o)                    │")
     print("└─────────────────────────────────────────┘")
@@ -138,6 +142,20 @@ def setup_provider(provider_name=None):
             if not provider_found:
                 new_lines.insert(0, f"LLM_PROVIDER={provider_name}\n")
 
+            # Ensure model name is set in .env for clarity
+            if provider_name == "gemini":
+                model_found = any(l.strip().startswith("MODEL_GEMINI=") for l in new_lines)
+                if not model_found:
+                    new_lines.append("MODEL_GEMINI=gemini-3.1-flash-lite\n")
+            elif provider_name == "openai":
+                model_found = any(l.strip().startswith("MODEL_OPENAI=") for l in new_lines)
+                if not model_found:
+                    new_lines.append("MODEL_OPENAI=gpt-4o-mini\n")
+            elif provider_name == "openrouter":
+                model_found = any(l.strip().startswith("MODEL_OPENROUTER=") for l in new_lines)
+                if not model_found:
+                    new_lines.append("MODEL_OPENROUTER=google/gemini-2.0-flash-exp:free\n")
+
             with open(env_path, "w", encoding="utf-8") as f:
                 f.writelines(new_lines)
 
@@ -165,7 +183,7 @@ def tampilkan_help():
     print("│  Available Commands:                                │")
     print("│                                                     │")
     print("│  [drag file]    Translate a single image or PDF     │")
-    print("│  [drag folder]  Batch translate all images in folder│")
+    print("│  [drag folder]  Batch translate all images in folder │")
     print("│  lang / switch  Change target language              │")
     print("│  provider / api Switch API provider                 │")
     print("│  model          Change the LLM model                │")
@@ -190,7 +208,7 @@ def main():
     # Automatically create desktop shortcut on first run (Windows only)
     create_shortcut_if_first_run()
 
-    print("CYPY v0.3 - Manga Translator")
+    print(f"CYPY v{__version__} - Manga Translator")
     print("Ready to translate~ (◠‿●) ~♪")
 
     # Always let user choose provider

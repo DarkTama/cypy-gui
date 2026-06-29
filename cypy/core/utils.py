@@ -38,6 +38,7 @@ _NOTO_SANS_MAP = {
     "chinese": "Noto+Sans+SC",
     "chinese (simplified)": "Noto+Sans+SC",
     "chinese (traditional)": "Noto+Sans+TC",
+    "mandarin": "Noto+Sans+SC",
     "thai": "Noto+Sans+Thai",
     "arabic": "Noto+Sans+Arabic",
     "hindi": "Noto+Sans+Devanagari",
@@ -84,6 +85,7 @@ _DIRECT_FONT_MAP = {
     "chinese": ("https://github.com/notofonts/noto-cjk/raw/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf", ".otf"),
     "china": ("https://github.com/notofonts/noto-cjk/raw/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf", ".otf"),
     "chinese (traditional)": ("https://github.com/notofonts/noto-cjk/raw/main/Sans/OTF/TraditionalChinese/NotoSansCJKtc-Regular.otf", ".otf"),
+    "mandarin": ("https://github.com/notofonts/noto-cjk/raw/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf", ".otf"),
     "thai": ("https://github.com/google/fonts/raw/main/ofl/notosansthai/NotoSansThai%5Bwdth%2Cwght%5D.ttf", ".ttf"),
     "thailand": ("https://github.com/google/fonts/raw/main/ofl/notosansthai/NotoSansThai%5Bwdth%2Cwght%5D.ttf", ".ttf"),
     "arabic": ("https://github.com/google/fonts/raw/main/ofl/notosansarabic/NotoSansArabic%5Bwdth%2Cwght%5D.ttf", ".ttf"),
@@ -137,6 +139,10 @@ def _download_noto_font(language):
     Downloads Noto Sans font. For mapped languages, uses direct github links for full unsubsetted fonts.
     For everything else, tries CSS API as fallback.
     """
+    if _requests is None:
+        print("  [!] 'requests' library is not installed. Custom fonts cannot be downloaded automatically.")
+        return None
+
     if not os.path.exists(FONT_CACHE_DIR):
         os.makedirs(FONT_CACHE_DIR)
 
@@ -496,6 +502,8 @@ def tulis_teks_jepang_vertikal(draw, text, font_func, x1, y1, x2, y2, setting, b
             elif char in ['「', '」', '（', '）', '(', ')']:
                 # Simplistic rotation/shift for brackets - in a real app you'd rotate the glyph
                 pass 
+            elif char == 'ー':
+                char = '︱'  # Hack/Trik untuk chouonpu vertikal
                 
             char_x = start_x + offset_x
             char_y = curr_y + offset_y

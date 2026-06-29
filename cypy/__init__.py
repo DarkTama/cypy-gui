@@ -1,2 +1,2 @@
 # cypy package
-__version__ = "0.2503"
+__version__ = "0.2504"

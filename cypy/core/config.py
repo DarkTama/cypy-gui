@@ -25,7 +25,7 @@ LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").lower()
 
 # Google Gemini
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-MODEL_GEMINI = os.getenv("MODEL_GEMINI", "gemini-2.0-flash")
+MODEL_GEMINI = os.getenv("MODEL_GEMINI", "gemini-3.1-flash-lite")
 
 # OpenRouter (https://openrouter.ai)
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")

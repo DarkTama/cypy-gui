@@ -38,6 +38,14 @@ def run_build():
         "--name=cypy",
         "--onedir",
         f"--add-data={assets_dir}{sep}assets",
+        "--exclude-module=polars",
+        "--exclude-module=scipy",
+        "--exclude-module=matplotlib",
+        "--exclude-module=lxml",
+        "--exclude-module=tkinter",
+        "--exclude-module=sqlite3",
+        "--exclude-module=IPython",
+        "--exclude-module=notebook",
     ]
     
     # Add icon if available

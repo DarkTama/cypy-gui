@@ -18,7 +18,7 @@
 
 ## Features
 
-- **Multi-Language Support:** Translate to English, Indonesian, Japanese (with native vertical *Tategaki* text!), Spanish, Portuguese, Javanese, and **Custom Languages** (supports Thai, Arabic, Cyrillic, etc. with automatic full variable font downloading!).
+- **Multi-Language Support:** Translate to English, Indonesian, Japanese (with native vertical *Tategaki* text!), Mandarin (简体中文), Spanish, Portuguese, Javanese, and **Custom Languages** (supports Thai, Arabic, Cyrillic, etc. with automatic full variable font downloading!).
 - **Multi-Provider AI:** Choose between **Google Gemini**, **OpenRouter** (100+ models like Claude 3.5 Sonnet), or **OpenAI** (GPT-4o) directly from the CLI.
 - **Interactive Commands:** Change the target language (`lang`), switch API providers (`provider`), change models (`model`), or check current settings (`status`) on the fly inside the loop.
 - **Zero-Setup Startup:** Prompts for the API key in the CLI and generates the `.env` file automatically if missing.
@@ -77,7 +77,7 @@ Customise settings inside the `.env` file:
 ```env
 # Gemini Config (Default)
 GEMINI_API_KEY=your_gemini_api_key_here
-MODEL_GEMINI=gemini-3.1-flash-lite-preview
+MODEL_GEMINI=gemini-3.1-flash-lite
 
 # OpenAI Config (Optional)
 OPENAI_API_KEY=your_openai_api_key_here
@@ -114,4 +114,4 @@ cypy/
 
 ## License
 
-Distributed under the [MIT License](LICENSE).
+[MIT](LICENSE)
