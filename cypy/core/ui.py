@@ -62,7 +62,7 @@ def print_box(title, options, col_width=28):
     half = (num_items + 1) // 2
     
     # Calculate box width
-    box_width = (col_width * 2) + 3
+    box_width = (col_width * 2) + 1
     
     print(f"\n{Colors.PURPLE}┌{'─' * box_width}┐")
     
@@ -106,7 +106,7 @@ def tampilkan_help():
     
     col1_w = 17
     col2_w = 38
-    box_w = col1_w + col2_w + 3
+    box_w = col1_w + 1 + col2_w
     
     print(f"\n{Colors.CYAN}{Colors.BOLD}┌{'─' * box_w}┐")
     title_line = visual_ljust("  Available CLI Commands:", box_w)
