@@ -6,6 +6,7 @@ import cypy.core.config as config
 from cypy.core.translator import proses_satu_gambar, mulai_ritual_pdf, proses_folder, mulai_ritual_archive
 from cypy.core.providers import create_provider
 from cypy.core.utils import create_shortcut_if_first_run
+from cypy.core import theme
 from cypy import __version__
 
 
@@ -47,18 +48,17 @@ PROVIDER_INFO = {
 
 
 def pilih_bahasa():
-    print("\n┌─────────────────────────────────────────┐")
-    print("│  Target Language / Bahasa Target:       │")
-    print("│                                         │")
-    print("│  [1] English                            │")
-    print("│  [2] Indonesian                         │")
-    print("│  [3] Japanese (日本語)                  │")
-    print("│  [4] Mandarin (简体中文)                │")
-    print("│  [5] Spanish (Español)                  │")
-    print("│  [6] Portuguese (Português)             │")
-    print("│  [7] Javanese (Basa Jawa)               │")
-    print("│  [8] Custom (type your own)             │")
-    print("└─────────────────────────────────────────┘")
+    options = [
+        "[1] English",
+        "[2] Indonesian",
+        "[3] Japanese (日本語)",
+        "[4] Mandarin (简体中文)",
+        "[5] Spanish (Español)",
+        "[6] Portuguese (Português)",
+        "[7] Javanese (Basa Jawa)",
+        "[8] Custom (type your own)",
+    ]
+    theme.print_box("Target Language / Bahasa Target:", options, col_width=28)
 
     lang_choice = input("Select choice / Pilih (1-8) [Default: 2]: ").strip()
     if lang_choice == "1":
@@ -89,15 +89,14 @@ def pilih_bahasa():
 
 
 def pilih_provider():
-    print("\n┌─────────────────────────────────────────┐")
-    print("│  API Provider:                          │")
-    print("│                                         │")
-    print("│  [1] Google Gemini (Default, free tier) │")
-    print("│  [2] OpenAI (GPT-5.4)                    │")
-    print("│  [3] Zen opencode.ai (no key needed)    │")
-    print("│  [4] OpenRouter (100+ models)           │")
-    print("│  [5] Custom (OpenAI-compatible, own URL)│")
-    print("└─────────────────────────────────────────┘")
+    options = [
+        "[1] Google Gemini",
+        "[2] OpenAI (GPT-5.4)",
+        "[3] Zen (opencode.ai)",
+        "[4] OpenRouter",
+        "[5] Custom (OpenAI-compatible)",
+    ]
+    theme.print_box("API Provider Selection:", options, col_width=28)
 
     choice = input("Select provider (1-5) [Default: 1]: ").strip()
     if choice == "2":
@@ -355,36 +354,11 @@ def menu_tweak():
                 print(f"  [!] Nilai harus berupa tipe {meta['type']}")
 
 def tampilkan_help():
-    print("\n┌─────────────────────────────────────────────────────┐")
-    print("│  Available Commands:                                │")
-    print("│                                                     │")
-    print("│  [drag file]    Translate a single image, PDF       │")
-    print("│  [drag folder]  Batch translate all images in folder│")
-    print("│  lang / switch  Change target language              │")
-    print("│  provider / api Switch API provider                 │")
-    print("│  model          Change the LLM model                │")
-    print("│  status         Show current settings               │")
-    print("│  tweak          Adjust layout & filter parameters   │")
-    print("│  help           Show this help menu                 │")
-    print("│  stop / exit    Exit cypy                           │")
-    print("├─────────────────────────────────────────────────────┤")
-    print("│  API Providers Info:                                │")
-    print("│  To use OpenRouter or OpenAI, add these to .env:    │")
-    print("│  OPENROUTER_API_KEY=\"your_key_here\"                 │")
-    print("│  OPENAI_API_KEY=\"your_key_here\"                     │")
-    print("│  Zen: free without key, or get one at:             │")
-    print("│  https://opencode.ai/auth  (ZEN_API_KEY)           │")
-    print("│  Custom: set CUSTOM_BASE_URL in .env               │")
-    print("│  CUSTOM_BASE_URL=https://your-api/v1               │")
-    print("└─────────────────────────────────────────────────────┘")
+    theme.tampilkan_help()
 
 
 def tampilkan_status(provider, target_language):
-    print(f"\n  Provider : {provider.provider_name}")
-    print(f"  Model    : {provider.model_name}")
-    if hasattr(provider, "base_url"):
-        print(f"  Base URL : {provider.base_url}")
-    print(f"  Language : {target_language}")
+    theme.tampilkan_status(provider, target_language)
 
 
 def main():
@@ -395,8 +369,7 @@ def main():
     if config.load_local_profile():
         print("\n[+] Loaded local profile (cypy_profile.json)")
 
-    print(f"CYPY v{__version__} - Manga Translator")
-    print("Ready to translate~ (◠‿●) ~♪")
+    theme.print_logo(__version__)
 
     env_path = os.path.join(config.ROOT_DIR, ".env")
     has_provider = _env_has_key(env_path, "LLM_PROVIDER")
