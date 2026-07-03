@@ -35,6 +35,8 @@ jobs:
       - name: Configure swap space (Linux)
         if: runner.os == 'Linux'
         run: |
+          sudo swapoff -a
+          sudo rm -f /swapfile
           sudo fallocate -l 10G /swapfile
           sudo chmod 600 /swapfile
           sudo mkswap /swapfile
