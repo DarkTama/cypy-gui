@@ -32,31 +32,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install .
 
-      - name: Configure swap space (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo swapoff -a
-          sudo rm -f /swapfile
-          sudo fallocate -l 10G /swapfile
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
-          echo "Swap enabled:"
-          free -h
-
-      - name: Configure page file (Windows)
-        if: runner.os == 'Windows'
-        shell: powershell
-        run: |
-          # Create 10GB page file on D: drive for compiler memory
-          $pf = Get-CimInstance -ClassName Win32_PageFileSetting -ErrorAction SilentlyContinue
-          if ($pf) { Remove-CimInstance -InputObject $pf }
-          New-CimInstance -ClassName Win32_PageFileSetting -Property @{Name="D:\pagefile.sys"; InitialSize=10240; MaximumSize=10240} -ErrorAction SilentlyContinue
-          # Also disable automatic managed pagefile and set current
-          $cs = Get-CimInstance Win32_ComputerSystem
-          Set-CimInstance -InputObject $cs -Property @{AutomaticManagedPagefile=$false}
-          Write-Host "Page file configured on D: drive (10GB)"
-
       - name: Run Build Script
         run: python build.py
 

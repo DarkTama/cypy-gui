@@ -24,11 +24,8 @@ APP_ENTRY_POINT = ROOT_DIR / APP_NAME / "app.py"
 
 EXEC_PATH = sys.executable
 REQUIRED_DEPS = {
-    "nuitka",
-    "ordered-set"
+    "pyinstaller"
 }
-if platform.system().lower() == "darwin":
-    REQUIRED_DEPS.add("imageio")
 
 EXTRA_FILES = {
     ROOT_DIR / "README.md",
@@ -67,9 +64,13 @@ def check_dependencies(deps: Iterable[str]) -> List[str]:
 
             for line in proc.stdout:
                 package = line.partition("==")[0].strip()
-                if package in deps:
-                    print(f"[Build] Dependency installed: {package}")
-                    available_deps.add(package)
+                # Normalize case for comparison
+                if package.lower() in {d.lower() for d in deps}:
+                    # Find exact case match
+                    for d in deps:
+                        if d.lower() == package.lower():
+                            print(f"[Build] Dependency installed: {d}")
+                            available_deps.add(d)
 
             returncode = proc.wait()
 
@@ -91,16 +92,12 @@ def check_dependencies(deps: Iterable[str]) -> List[str]:
 
 def install_dependencies(deps: Iterable[str]):
     deps = set(deps)
+    print(f"[Build] Installing dependencies via pip: {', '.join(deps)}...", file=sys.stderr)
     try:
-        from nuitka.Version import getNuitkaVersion
-        print(f"[Build] Nuitka version: {getNuitkaVersion()}")
-    except ImportError:
-        print("[Build] Nuitka not found. Installing via pip...", file=sys.stderr)
-        try:
-            subprocess.check_call([EXEC_PATH, "-m", "pip", "install", *deps])
-        except subprocess.CalledProcessError as e:
-            print(f"[Build] Failed to install {', '.join(deps)}: {e}", file=sys.stderr)
-            sys.exit(e.returncode)
+        subprocess.check_call([EXEC_PATH, "-m", "pip", "install", *deps])
+    except subprocess.CalledProcessError as e:
+        print(f"[Build] Failed to install {', '.join(deps)}: {e}", file=sys.stderr)
+        sys.exit(e.returncode)
 
 def run_build():
     available_deps = check_dependencies(REQUIRED_DEPS)
@@ -110,7 +107,7 @@ def run_build():
         print(f"[Build] Missing dependencies: {', '.join(missing_deps_sorted)}")
         install_dependencies(missing_deps_sorted)
 
-    # Clean up old build outputs to avoid Windows locked file issues
+    # Clean up old build outputs
     if DIST_DIR.exists():
         print(f"[Build] Cleaning up old build directory: {DIST_DIR}")
         try:
@@ -119,59 +116,55 @@ def run_build():
             print(f"[Build] Warning: Failed to fully delete {DIST_DIR}, error: {e}. Trying to ignore errors...")
             shutil.rmtree(DIST_DIR, ignore_errors=True)
 
-    # Build command using Nuitka (cypy is CLI so console mode is enable)
-    cmd: List[str] = [
-        EXEC_PATH, "-m", "nuitka",
-        "--standalone",
-        f"--output-dir={DIST_DIR}",
-        f"--output-filename={APP_NAME}",
-        f"--include-data-dir={ASSETS_DIR}=assets",
-        "--nofollow-import-to=pandas",
-        "--nofollow-import-to=tensorboard",
-        "--nofollow-import-to=tkinter",
-        "--nofollow-import-to=IPython",
-        "--nofollow-import-to=torch",
-        "--nofollow-import-to=ultralytics",
-        "--assume-yes-for-downloads",
-        "--show-progress",
-        "--jobs=1",
-        "--low-memory",
-    ]
+    build_temp_dir = ROOT_DIR / "build_temp"
+    if build_temp_dir.exists():
+        shutil.rmtree(build_temp_dir, ignore_errors=True)
 
+    # OS-specific settings
     curr_system = platform.system().lower()
     is_favicon_exist = ICON_PATH.is_file()
-    if not is_favicon_exist:
-        print(
-            "[Build] Warning: favicon.ico not found, compiling without custom icon.",
-            file=sys.stderr
-        )
+    
+    # Path separator for PyInstaller --add-data
+    data_sep = ";" if curr_system == "windows" else ":"
 
-    if curr_system == "windows":
-        cmd.append("--mingw64")  # GCC handles large C files better than MSVC
-        # Reduce GCC peak memory for massive generated C files (e.g. google.genai.types)
-        cmd.extend([
-            "--c-compiler-option=-Os",
-            "--c-compiler-option=--param=ggc-min-heapsize=1024",
-            "--c-compiler-option=--param=ggc-min-expand=1",
-        ])
-        cmd.extend([
-            f"--windows-icon-from-ico={ICON_PATH}" if is_favicon_exist else ''
-        ])
-    elif curr_system == "darwin":
-        cmd.extend([
-            f"--macos-app-icon={ICON_PATH}" if is_favicon_exist else ''
-        ])
+    # Build command using PyInstaller
+    cmd: List[str] = [
+        EXEC_PATH, "-m", "PyInstaller",
+        "--noconfirm",
+        "--onedir",
+        "--console",
+        f"--name={APP_NAME}",
+        f"--distpath={DIST_DIR}",
+        f"--workpath={build_temp_dir}",
+        f"--add-data={ASSETS_DIR}{data_sep}assets",
+        "--exclude-module=pandas",
+        "--exclude-module=tensorboard",
+        "--exclude-module=tkinter",
+        "--exclude-module=IPython",
+        "--exclude-module=torch",
+        "--exclude-module=ultralytics",
+    ]
 
-    cmd = [c for c in cmd if c.strip() != '']
+    if is_favicon_exist:
+        cmd.append(f"--icon={ICON_PATH}")
+
     cmd.append(str(APP_ENTRY_POINT))
 
-    print(f"[Build] Running Nuitka compilation command:\n{' '.join(cmd)}")
+    print(f"[Build] Running PyInstaller compilation command:\n{' '.join(cmd)}")
     try:
         subprocess.check_call(cmd)
-        print("[Build] Nuitka compilation completed successfully!")
+        print("[Build] PyInstaller compilation completed successfully!")
     except subprocess.CalledProcessError as e:
-        print(f"[Build] Nuitka compilation failed with exit code: {e.returncode}")
+        print(f"[Build] PyInstaller compilation failed with exit code: {e.returncode}")
         sys.exit(1)
+    finally:
+        # Clean up temporary build spec/work path files
+        if build_temp_dir.exists():
+            shutil.rmtree(build_temp_dir, ignore_errors=True)
+        spec_file = ROOT_DIR / f"{APP_NAME}.spec"
+        if spec_file.is_file():
+            try: spec_file.unlink()
+            except Exception: pass
 
     package_release(ROOT_DIR)
 
@@ -193,28 +186,22 @@ def package_release(project_root: Union[str, Path]):
     zip_path = RELEASES_DIR / zip_name
     print(f"[Build] Packaging application for {os_name} ({arch})...")
 
-    nuitka_output = None
-    dist_dir_items = list(DIST_DIR.iterdir())
-    
-    std_dist = DIST_DIR / "app.dist"
-    if std_dist.is_dir() and any(std_dist.iterdir()):
-        nuitka_output = std_dist
-    else:
-        for item in dist_dir_items:
-            if (item.name.endswith(".dist") or item.name.endswith(".app")) and item.is_dir():
-                if not any(item.iterdir()): continue
-                nuitka_output = item
-                break
+    pyinstaller_output = DIST_DIR / APP_NAME
+    if os_name == "macos":
+        # PyInstaller on macOS creates cypy.app bundle in the dist path
+        app_bundle = DIST_DIR / f"{APP_NAME}.app"
+        if app_bundle.is_dir():
+            pyinstaller_output = app_bundle
 
-    if not nuitka_output or not nuitka_output.is_dir():
+    if not pyinstaller_output or not pyinstaller_output.is_dir():
         print(
-            f"[Build] Error: Nuitka valid output directory not found.\n" +
-            f"[Build] Contents of 'dist/': {dist_dir_items if dist_dir_items else 'NOT FOUND'}",
+            f"[Build] Error: PyInstaller valid output directory not found.\n" +
+            f"[Build] Contents of 'dist/': {list(DIST_DIR.iterdir()) if DIST_DIR.exists() else 'NOT FOUND'}",
             file=sys.stderr
         )
         sys.exit(2)
 
-    print(f"[Build] Found Nuitka output at: {nuitka_output}")
+    print(f"[Build] Found PyInstaller output at: {pyinstaller_output}")
 
     app_folder_path = DIST_DIR / f"{APP_NAME}_pkg_temp"
     if app_folder_path.is_dir():
@@ -224,8 +211,8 @@ def package_release(project_root: Union[str, Path]):
     app_folder_path.mkdir(exist_ok=True)
 
     # Copy files
-    for item in os.listdir(nuitka_output):
-        s = nuitka_output / item
+    for item in os.listdir(pyinstaller_output):
+        s = pyinstaller_output / item
         d = app_folder_path / item
         if s.is_dir():
             shutil.copytree(s, d, symlinks=True)
@@ -253,17 +240,32 @@ def package_release(project_root: Union[str, Path]):
             print(f"[Build] Warning: Failed to clean up temporary release folder: {e}", file=sys.stderr)
 
     try:
-        print(f"[Build] Zipping folder: {app_folder_path} to {zip_path}...")
-        created_zip = safe_zip_directory(app_folder_path, zip_path)
-        created_zip_path = Path(created_zip)
-        if not created_zip_path.is_file():
-            raise FileNotFoundError(f"[Build] Expected archive not found: {created_zip}")
+        # Temporary rename pyinstaller output to avoid collision with zip renaming
+        pyinstaller_output_renamed = pyinstaller_output.parent / f"{pyinstaller_output.name}_raw"
+        if pyinstaller_output.exists():
+            try:
+                pyinstaller_output.rename(pyinstaller_output_renamed)
+            except Exception as rename_err:
+                print(f"[Build] Warning: Failed to temporarily rename raw output: {rename_err}", file=sys.stderr)
+        
+        try:
+            print(f"[Build] Zipping folder: {app_folder_path} to {zip_path}...")
+            created_zip = safe_zip_directory(app_folder_path, zip_path)
+            created_zip_path = Path(created_zip)
+            if not created_zip_path.is_file():
+                raise FileNotFoundError(f"[Build] Expected archive not found: {created_zip}")
 
-        if RELEASES_DIR not in created_zip_path.parents:
-            created_zip_path = Path(shutil.move(created_zip_path, RELEASES_DIR / created_zip_path.name))
+            if RELEASES_DIR not in created_zip_path.parents:
+                created_zip_path = Path(shutil.move(created_zip_path, RELEASES_DIR / created_zip_path.name))
 
-        print(f"[Build] Packaged successfully to: {created_zip_path}")
-        print(f"[Build] Package size: {created_zip_path.stat().st_size / (1024*1024):.2f} MB")
+            print(f"[Build] Packaged successfully to: {created_zip_path}")
+            print(f"[Build] Package size: {created_zip_path.stat().st_size / (1024*1024):.2f} MB")
+        finally:
+            if pyinstaller_output_renamed.exists():
+                try:
+                    pyinstaller_output_renamed.rename(pyinstaller_output)
+                except Exception as restore_err:
+                    print(f"[Build] Warning: Failed to restore raw output folder: {restore_err}", file=sys.stderr)
     except Exception as e:
         print(f"[Build] Packaging failed: {e}", file=sys.stderr)
         sys.exit(1)

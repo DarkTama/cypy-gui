@@ -71,12 +71,12 @@ Download the pre-compiled package for your OS from the [Releases](https://github
    python -m cypy
    ```
 
-### Option 3: Building Standalone Executable (Using Nuitka)
-If you want to compile `cypy` into a standalone, optimized C++ directory package yourself, run the build script:
+### Option 3: Building Standalone Executable (Using PyInstaller)
+If you want to compile `cypy` into a standalone, optimized directory package yourself, run the build script:
 ```bash
 python build.py
 ```
-This requires **Nuitka** (which will be installed automatically if missing) and will output the ready-to-run `.zip` package inside the `releases/` directory.
+This requires **PyInstaller** (which will be installed automatically if missing) and will output the ready-to-run `.zip` package inside the `releases/` directory.
 
 ---
 
