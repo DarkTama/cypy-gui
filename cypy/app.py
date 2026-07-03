@@ -401,8 +401,6 @@ def main():
     # Show current config
     tampilkan_status(provider, target_language)
 
-    print("Ready! Drag-and-drop files or folders to translate. Type 'help' for commands.")
-
     while True:
         try:
             raw_input_str = input("\nDrag-and-drop image/PDF/CBZ/folder here (or 'help' 'stop'): ")
