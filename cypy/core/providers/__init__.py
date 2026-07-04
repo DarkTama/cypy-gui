@@ -4,7 +4,7 @@ from cypy.core.types import AnyDict
 from cypy.core.providers.base import APIKey, LLMProvider
 from cypy.core.providers.gemini import GeminiProvider
 from cypy.core.providers.openrouter import OpenRouterProvider
-from cypy.core.providers.openai_provider import OpenAIProvider
+from cypy.core.providers.openai import OpenAIProvider
 from cypy.core.providers.zen import ZenProvider
 from cypy.core.providers.custom import CustomProvider
 
