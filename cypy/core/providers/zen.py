@@ -1,10 +1,12 @@
-import io
-import base64
+from typing import Literal
 
 import requests
+from PIL.Image import Image
 
+from cypy.core.providers._constants import DEFAULT_HEADERS
 from cypy.core.providers.base import LLMProvider
-
+from cypy.core.config import REQUEST_TIMEOUT
+from cypy.core.utils import image2base64
 
 class ZenProvider(LLMProvider):
     """
@@ -15,22 +17,23 @@ class ZenProvider(LLMProvider):
     BASE_URL = "https://opencode.ai/zen/v1/chat/completions"
 
     @property
-    def provider_name(self):
+    def provider_name(self, /) -> Literal["Zen (opencode.ai)"]:
         return "Zen (opencode.ai)"
 
-    def validate_api_key(self):
+    def validate_api_key(self, /) -> Literal[True]:
         """Zen works without an API key — always pass validation."""
         return True
 
-    def translate_image(self, image, prompt):
-        buffered = io.BytesIO()
-        image.save(buffered, format="PNG")
-        img_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+    def translate_image(self, image: Image, prompt: str): # -> Unknown
+        img_b64 = image2base64(image)
         data_uri = f"data:image/png;base64,{img_b64}"
 
-        headers = {"Content-Type": "application/json"}
+        headers = DEFAULT_HEADERS.copy()
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
+        else:
+            # Zen provider can accept request even without API key
+            headers.pop("Authorization", "")
 
         payload = {
             "model": self.model_name,
@@ -47,7 +50,12 @@ class ZenProvider(LLMProvider):
             ],
         }
 
-        response = requests.post(self.BASE_URL, headers=headers, json=payload, timeout=120)
+        response = requests.post(
+            self.BASE_URL,
+            headers=headers,
+            json=payload,
+            timeout=REQUEST_TIMEOUT
+        )
 
         if response.status_code == 401:
             raise ValueError("API_KEY_ERROR")
