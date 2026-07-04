@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, Optional
 
 import requests
 from PIL.Image import Image
@@ -23,7 +23,7 @@ class OpenAIProvider(LLMProvider):
     def provider_name(self, /) -> Literal["OpenAI"]:
         return "OpenAI"
 
-    def translate_image(self, image: Image, prompt: str): # -> Unknown
+    def translate_image(self, /, image: Image, prompt: str) -> Optional[str]:
         # Convert PIL Image to base64 data URI
         img_base64 = image2base64(image)
         data_uri = f"data:image/png;base64,{img_base64}"

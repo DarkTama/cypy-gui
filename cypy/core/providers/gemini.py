@@ -21,7 +21,7 @@ class GeminiProvider(LLMProvider):
     def provider_name(self, /) -> Literal["Google Gemini"]:
         return "Google Gemini"
 
-    def translate_image(self, image: Image, prompt: str) -> Optional[str]:
+    def translate_image(self, /, image: Image, prompt: str) -> Optional[str]:
         if genai is None:
             raise ImportError(
                 "google-genai package is not installed. "

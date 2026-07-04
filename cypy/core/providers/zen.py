@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, Optional
 
 import requests
 from PIL.Image import Image
@@ -24,7 +24,7 @@ class ZenProvider(LLMProvider):
         """Zen works without an API key — always pass validation."""
         return True
 
-    def translate_image(self, image: Image, prompt: str): # -> Unknown
+    def translate_image(self, /, image: Image, prompt: str) -> Optional[str]:
         img_b64 = image2base64(image)
         data_uri = f"data:image/png;base64,{img_b64}"
 

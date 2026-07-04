@@ -37,7 +37,7 @@ class CustomProvider(LLMProvider):
     def base_url(self, /, url: str) -> None:
         self._base_url = url
 
-    def translate_image(self, image: Image, prompt: str): # -> Unknown
+    def translate_image(self, /, image: Image, prompt: str) -> Optional[str]:
         if not self._base_url:
             raise RuntimeError("Custom provider base URL is not configured.")
 

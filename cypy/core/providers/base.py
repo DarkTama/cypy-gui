@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import Optional
 
 import requests
 from PIL.Image import Image
@@ -30,7 +31,7 @@ class LLMProvider(ABC):
         return self.__api_key
 
     @abstractmethod
-    def translate_image(self, /, image: Image, prompt: str) -> ...:
+    def translate_image(self, /, image: Image, prompt: str) -> Optional[str]:
         """
         Send a PIL Image + prompt to the LLM and return the raw response text.
 
@@ -39,7 +40,9 @@ class LLMProvider(ABC):
             prompt (str): The translation prompt.
 
         Returns:
-            str: The raw text response from the LLM (should be JSON).
+            str or None:
+                The raw text response from the LLM (should be JSON),
+                or `None` if the request error.
 
         Raises:
             ValueError("API_KEY_ERROR"): If the API key is invalid or expired.
