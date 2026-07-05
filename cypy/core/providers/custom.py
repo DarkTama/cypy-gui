@@ -1,10 +1,12 @@
-import io
-import base64
+from typing import Optional, Literal
 
 import requests
+from PIL.Image import Image
 
-from cypy.core.providers.base import LLMProvider
-
+from cypy.core.providers._constants import DEFAULT_HEADERS
+from cypy.core.providers.base import APIKey, LLMProvider
+from cypy.core.config import REQUEST_TIMEOUT
+from cypy.core.utils import image2base64
 
 class CustomProvider(LLMProvider):
     """
@@ -12,29 +14,34 @@ class CustomProvider(LLMProvider):
     Uses the same /v1/chat/completions format as OpenAI.
     """
 
-    def __init__(self, api_key, model_name, base_url=""):
-        super().__init__(api_key, model_name)
+    def __init__(self, /, api_key: Optional[APIKey], model_name: str, base_url: Optional[str] = ""):
+        super().__init__(api_key or "", model_name)
         self._base_url = (base_url or "").rstrip("/")
 
     @property
-    def provider_name(self):
+    def provider_name(self, /) -> Literal["Custom"]:
         return "Custom"
 
-    def validate_api_key(self):
+    def validate_api_key(self, /) -> Literal[True]:
         """Key is optional — some local providers don't need one."""
         return True
 
     @property
-    def base_url(self):
-        return self._base_url or "Not set"
+    def base_url(self, /) -> str:
+        """
+        The base URL for this provider, or `'[Not set]'` if not set.
+        """
+        return self._base_url or "[Not set]"
 
-    def translate_image(self, image, prompt):
+    @base_url.setter
+    def base_url(self, /, url: str) -> None:
+        self._base_url = url
+
+    def translate_image(self, /, image: Image, prompt: str) -> Optional[str]:
         if not self._base_url:
             raise RuntimeError("Custom provider base URL is not configured.")
 
-        buffered = io.BytesIO()
-        image.save(buffered, format="PNG")
-        img_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        img_b64 = image2base64(image)
         data_uri = f"data:image/png;base64,{img_b64}"
 
         # Build endpoint URL — append /chat/completions if not already present
@@ -42,9 +49,11 @@ class CustomProvider(LLMProvider):
         if not endpoint.endswith("/chat/completions"):
             endpoint = endpoint.rstrip("/") + "/v1/chat/completions"
 
-        headers = {"Content-Type": "application/json"}
+        headers = DEFAULT_HEADERS.copy()
         if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
+            headers["Authorization"] = f"Bearer {self.api_key.strip()}"
+        else:
+            headers.pop("Authorization", "")
 
         payload = {
             "model": self.model_name,
@@ -61,17 +70,18 @@ class CustomProvider(LLMProvider):
             ],
         }
 
-        response = requests.post(endpoint, headers=headers, json=payload, timeout=120)
+        response = requests.post(
+            endpoint,
+            headers=headers,
+            json=payload,
+            timeout=REQUEST_TIMEOUT
+        )
 
-        if response.status_code == 401:
+        if response.status_code in (401, 402):
             raise ValueError("API_KEY_ERROR")
 
         if response.status_code != 200:
-            try:
-                detail = response.json().get("error", {}).get("message", "")
-            except Exception:
-                detail = response.text[:200]
-            raise RuntimeError(f"Custom API error {response.status_code}: {detail}")
+            self._resolve_error(self.provider_name, response)
 
         try:
             return response.json()["choices"][0]["message"]["content"]

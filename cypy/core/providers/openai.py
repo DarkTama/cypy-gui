@@ -1,13 +1,12 @@
-import io
-import base64
+from typing import Literal, Optional
 
+import requests
+from PIL.Image import Image
+
+from cypy.core.providers._constants import DEFAULT_HEADERS
 from cypy.core.providers.base import LLMProvider
-
-try:
-    import requests
-except ImportError:
-    requests = None
-
+from cypy.core.config import REQUEST_TIMEOUT
+from cypy.core.utils import image2base64
 
 class OpenAIProvider(LLMProvider):
     """
@@ -21,26 +20,20 @@ class OpenAIProvider(LLMProvider):
     BASE_URL = "https://api.openai.com/v1/chat/completions"
 
     @property
-    def provider_name(self):
+    def provider_name(self, /) -> Literal["OpenAI"]:
         return "OpenAI"
 
-    def translate_image(self, image, prompt):
-        if requests is None:
-            raise ImportError(
-                "requests package is not installed. "
-                "Install it with: pip install requests"
-            )
-
+    def translate_image(self, /, image: Image, prompt: str) -> Optional[str]:
         # Convert PIL Image to base64 data URI
-        buffered = io.BytesIO()
-        image.save(buffered, format="PNG")
-        img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        img_base64 = image2base64(image)
         data_uri = f"data:image/png;base64,{img_base64}"
 
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
+        # Validate the API key
+        if not self.validate_api_key():
+            raise ValueError("API_KEY_ERROR")
+
+        headers = DEFAULT_HEADERS.copy()
+        headers["Authorization"] = f"Bearer {self.api_key.strip()}"
 
         payload = {
             "model": self.model_name,
@@ -68,21 +61,14 @@ class OpenAIProvider(LLMProvider):
             self.BASE_URL,
             headers=headers,
             json=payload,
-            timeout=120,
+            timeout=REQUEST_TIMEOUT,
         )
 
         if response.status_code == 401:
             raise ValueError("API_KEY_ERROR")
 
         if response.status_code != 200:
-            error_detail = ""
-            try:
-                error_detail = response.json().get("error", {}).get("message", "")
-            except Exception:
-                error_detail = response.text[:200]
-            raise RuntimeError(
-                f"OpenAI API error {response.status_code}: {error_detail}"
-            )
+            self._resolve_error(self.provider_name, response)
 
         result = response.json()
 
