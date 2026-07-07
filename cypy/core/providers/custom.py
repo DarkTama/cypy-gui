@@ -1,3 +1,4 @@
+import re
 from typing import Optional, Literal
 
 import requests
@@ -44,10 +45,15 @@ class CustomProvider(LLMProvider):
         img_b64 = image2base64(image)
         data_uri = f"data:image/png;base64,{img_b64}"
 
-        # Build endpoint URL — append /chat/completions if not already present
-        endpoint = self._base_url
+        # Build endpoint URL — append /chat/completions if not already present,
+        # without doubling the version segment when the base URL already ends
+        # in one (the documented format is "https://api.example.com/v1")
+        endpoint = self._base_url.rstrip("/")
         if not endpoint.endswith("/chat/completions"):
-            endpoint = endpoint.rstrip("/") + "/v1/chat/completions"
+            if re.search(r"/v\d+[a-z]*$", endpoint):
+                endpoint += "/chat/completions"
+            else:
+                endpoint += "/v1/chat/completions"
 
         headers = DEFAULT_HEADERS.copy()
         if self.api_key:

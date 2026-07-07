@@ -114,7 +114,7 @@ def terjemahkan_mosaik(gambar_mosaik_pil, provider, target_language="Indonesian"
                 time.sleep(wait_time)
                 continue
 
-            log(f"\n[!] {provider.provider_name} error (Attempt {percobaan + 1}/{max_retry}).")
+            log(f"\n[!] {provider.provider_name} error (Attempt {percobaan + 1}/{max_retry}): {str(e)[:300]}")
 
             if percobaan < max_retry - 1:
                 time.sleep(10)
