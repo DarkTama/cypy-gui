@@ -27,12 +27,13 @@ from cypy.core.utils import (
 
 yolo_lock = threading.Lock()
 
-def terjemahkan_mosaik(gambar_mosaik_pil, provider, target_language="Indonesian", max_retry=3):
+def terjemahkan_mosaik(gambar_mosaik_pil, provider, target_language="Indonesian", max_retry=3, progress=None):
     """Sends a single mosaic image to the LLM provider for translation~ ♪"""
+    log = progress or print
     for percobaan in range(max_retry):
         try:
             if not provider.validate_api_key():
-                print(f"\n[!] API key for {provider.provider_name} is missing or empty!")
+                log(f"\n[!] API key for {provider.provider_name} is missing or empty!")
                 return {}
 
             examples = {
@@ -79,6 +80,16 @@ def terjemahkan_mosaik(gambar_mosaik_pil, provider, target_language="Indonesian"
                 f'Example output: {{"1": "{example_val_1}", "2": "SKIP", "3": "{example_val_3}"}}'
             )
 
+            glossary = getattr(config, "GLOSSARY", None)
+            if glossary:
+                glossary_lines = "\n".join(f'- "{src}" => "{dst}"' for src, dst in glossary.items())
+                prompt += (
+                    "\n\nGLOSSARY RULES:\n"
+                    "Always use these exact translations for the following names/terms, "
+                    "regardless of context:\n"
+                    f"{glossary_lines}"
+                )
+
             response_text = provider.translate_image(gambar_mosaik_pil, prompt)
 
             teks_json = bersihkan_json_dari_gemini(response_text)
@@ -88,27 +99,27 @@ def terjemahkan_mosaik(gambar_mosaik_pil, provider, target_language="Indonesian"
 
         except ValueError as ve:
             if str(ve) == "API_KEY_ERROR":
-                print(f"\n[!] API key for {provider.provider_name} is expired or invalid.")
+                log(f"\n[!] API key for {provider.provider_name} is expired or invalid.")
                 return {}
             raise ve
         except Exception as e:
             err_str = str(e).lower()
             if "api key expired" in err_str or "api_key_invalid" in err_str or "api key" in err_str or "api_key" in err_str:
-                print(f"\n[!] API key for {provider.provider_name} is expired or invalid.")
+                log(f"\n[!] API key for {provider.provider_name} is expired or invalid.")
                 return {}
-                
+
             if "429" in err_str or "too many requests" in err_str or "rate limit" in err_str:
                 wait_time = 5 * (2 ** percobaan)
-                print(f"\n[!] Rate limit hit for {provider.provider_name}. Retrying in {wait_time}s...")
+                log(f"\n[!] Rate limit hit for {provider.provider_name}. Retrying in {wait_time}s...")
                 time.sleep(wait_time)
                 continue
 
-            print(f"\n[!] {provider.provider_name} error (Attempt {percobaan + 1}/{max_retry}).")
+            log(f"\n[!] {provider.provider_name} error (Attempt {percobaan + 1}/{max_retry}).")
 
             if percobaan < max_retry - 1:
                 time.sleep(10)
             else:
-                print(f"  [!] Failed to connect to {provider.provider_name}.")
+                log(f"  [!] Failed to connect to {provider.provider_name}.")
                 return {}
 
 
@@ -153,11 +164,20 @@ def perkecil_daftar_potongan_jika_mosaik_terlalu_tinggi(
 
 
 
-def proses_satu_gambar(image_path, yolo_model, provider, target_language="Indonesian"):
-    """Processes a single manga page. Splits landscape images into two pages automatically~ ♪"""
+def proses_satu_gambar(image_path, yolo_model, provider, target_language="Indonesian",
+                       progress=None, on_boxes=None, on_translations=None):
+    """Processes a single manga page. Splits landscape images into two pages automatically~ ♪
+
+    Optional hooks (used by the GUI, default CLI behavior unchanged):
+      progress(msg)                          -- receives log messages instead of print
+      on_boxes(img, boxes) -> boxes|None     -- review/edit detected boxes; None cancels
+      on_translations(img, koordinat_jejak, texts) -> texts|None
+                                             -- review/edit translations; None cancels
+    """
+    log = progress or print
     img = cv2.imdecode(np.fromfile(image_path, dtype=np.uint8), cv2.IMREAD_COLOR)
     if img is None:
-        print("[!] Image file is corrupt or unreadable.")
+        log("[!] Image file is corrupt or unreadable.")
         return None
         
     tinggi_img, lebar_img = img.shape[:2]
@@ -170,7 +190,7 @@ def proses_satu_gambar(image_path, yolo_model, provider, target_language="Indone
         # Rasio lebar/tinggi halaman manga standar biasanya sekitar 0,7 hingga 0,75
         num_splits = max(2, round(ratio / 0.71))
         
-        print(f"  [Auto-Split] Wide image detected (ratio {ratio:.2f}). Splitting into {num_splits} parts...")
+        log(f"  [Auto-Split] Wide image detected (ratio {ratio:.2f}). Splitting into {num_splits} parts...")
         
         split_width = lebar_img // num_splits
         
@@ -187,8 +207,10 @@ def proses_satu_gambar(image_path, yolo_model, provider, target_language="Indone
             part_path = image_path.rsplit(".", 1)[0] + f"_split{i+1}.png"
             cv2.imwrite(part_path, img_part)
             
-            print(f"  Translating Part {i+1} (Right-to-Left)...")
-            res_path = _proses_satu_gambar_core(part_path, yolo_model, provider, target_language)
+            log(f"  Translating Part {i+1} (Right-to-Left)...")
+            res_path = _proses_satu_gambar_core(part_path, yolo_model, provider, target_language,
+                                                progress=progress, on_boxes=on_boxes,
+                                                on_translations=on_translations)
             splits.append((res_path, part_path))
             
         # Gabungkan Ulang
@@ -225,25 +247,12 @@ def proses_satu_gambar(image_path, yolo_model, provider, target_language="Indone
             return output_path
             
     # Kalau bukan gambar landscape proses aja kayak biasa
-    return _proses_satu_gambar_core(image_path, yolo_model, provider, target_language)
+    return _proses_satu_gambar_core(image_path, yolo_model, provider, target_language,
+                                    progress=progress, on_boxes=on_boxes,
+                                    on_translations=on_translations)
 
-def _proses_satu_gambar_core(image_path, yolo_model, provider, target_language="Indonesian"):
-    """Core processing function for a single manga page~ ♪"""
-
-    print(f"\nTranslating: {os.path.basename(image_path)}")
-
-    lang_code = config.LANG_CODES.get(target_language.lower(), target_language[:2].lower() if target_language else "tr")
-    suffix = f"_cypytr_{lang_code}"
-
-    img = cv2.imdecode(np.fromfile(image_path, dtype=np.uint8), cv2.IMREAD_COLOR)
-
-    if img is None:
-        print("[!] Image file is corrupt or unreadable.")
-        return None
-
-    img_pil_utama = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-    draw_utama = ImageDraw.Draw(img_pil_utama)
-
+def deteksi_kotak_teks(img, yolo_model, image_path=""):
+    """Multi-pass YOLO detection + box cleanup. Returns the final bubble boxes."""
     tinggi_img, lebar_img = img.shape[:2]
 
     tahap_prediksi = [
@@ -275,6 +284,17 @@ def _proses_satu_gambar_core(image_path, yolo_model, provider, target_language="
         boxes=kotak_matang,
         image_name=image_path
     )
+
+    return kotak_matang
+
+
+def buat_mosaik_dari_kotak(img, kotak_matang):
+    """Crops, masks, and assembles numbered bubble cutouts into a mosaic.
+
+    Returns (kanvas_mosaik, koordinat_jejak); kanvas_mosaik is None when there
+    are no usable bubbles.
+    """
+    tinggi_img, lebar_img = img.shape[:2]
 
     daftar_potongan = []
     koordinat_jejak = {}
@@ -329,14 +349,7 @@ def _proses_satu_gambar_core(image_path, yolo_model, provider, target_language="
     total_balon = len(daftar_potongan)
 
     if total_balon == 0:
-        print("  No text bubbles found.")
-
-        output_path = image_path.rsplit(".", 1)[0] + f"{suffix}.png"
-        img_pil_utama.save(output_path)
-
-        return output_path
-
-    print(f"  Found {total_balon} speech bubbles...")
+        return None, {}
 
     margin_kiri_nomor = config.MARGIN_KIRI_NOMOR
     margin_kanan = config.MARGIN_KANAN
@@ -389,26 +402,12 @@ def _proses_satu_gambar_core(image_path, yolo_model, provider, target_language="
 
         y_offset += pot.height + jarak_antar_potongan
 
-    temp_mosaik_dir = os.path.join(config.ROOT_DIR, "cypy_cache")
-    os.makedirs(temp_mosaik_dir, exist_ok=True)
+    return kanvas_mosaik, koordinat_jejak
 
-    mosaik_path = os.path.join(
-        temp_mosaik_dir,
-        f"mosaic_preview_{os.path.basename(image_path)}"
-    )
 
-    kanvas_mosaik.save(mosaik_path)
-
-    print(f"  Translating with {provider.provider_name} ({provider.model_name})...")
-
-    hasil_terjemahan = terjemahkan_mosaik(kanvas_mosaik, provider=provider, target_language=target_language)
-
-    if not hasil_terjemahan:
-        print("  [!] Translation failed.")
-        return None
-
-    if config.MANUAL_TRANSLATION_OVERRIDE:
-        hasil_terjemahan.update(config.MANUAL_TRANSLATION_OVERRIDE)
+def render_terjemahan(img_pil_utama, draw_utama, hasil_terjemahan, koordinat_jejak, target_language="Indonesian"):
+    """Writes translated texts back onto the page image (modifies it in place)."""
+    lebar_img, tinggi_img = img_pil_utama.size
 
     for nomor, teks in hasil_terjemahan.items():
         if nomor in koordinat_jejak:
@@ -481,6 +480,75 @@ def _proses_satu_gambar_core(image_path, yolo_model, provider, target_language="
                         target_language=target_language
                     )
 
+
+def _proses_satu_gambar_core(image_path, yolo_model, provider, target_language="Indonesian",
+                             progress=None, on_boxes=None, on_translations=None):
+    """Core processing function for a single manga page~ ♪"""
+    log = progress or print
+
+    log(f"\nTranslating: {os.path.basename(image_path)}")
+
+    lang_code = config.LANG_CODES.get(target_language.lower(), target_language[:2].lower() if target_language else "tr")
+    suffix = f"_cypytr_{lang_code}"
+
+    img = cv2.imdecode(np.fromfile(image_path, dtype=np.uint8), cv2.IMREAD_COLOR)
+
+    if img is None:
+        log("[!] Image file is corrupt or unreadable.")
+        return None
+
+    img_pil_utama = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+    draw_utama = ImageDraw.Draw(img_pil_utama)
+
+    kotak_matang = deteksi_kotak_teks(img, yolo_model, image_path)
+
+    if on_boxes is not None:
+        kotak_matang = on_boxes(img, kotak_matang)
+        if kotak_matang is None:
+            log("  [!] Cancelled during detection review.")
+            return None
+
+    kanvas_mosaik, koordinat_jejak = buat_mosaik_dari_kotak(img, kotak_matang)
+
+    if kanvas_mosaik is None:
+        log("  No text bubbles found.")
+
+        output_path = image_path.rsplit(".", 1)[0] + f"{suffix}.png"
+        img_pil_utama.save(output_path)
+
+        return output_path
+
+    log(f"  Found {len(koordinat_jejak)} speech bubbles...")
+
+    temp_mosaik_dir = os.path.join(config.ROOT_DIR, "cypy_cache")
+    os.makedirs(temp_mosaik_dir, exist_ok=True)
+
+    mosaik_path = os.path.join(
+        temp_mosaik_dir,
+        f"mosaic_preview_{os.path.basename(image_path)}"
+    )
+
+    kanvas_mosaik.save(mosaik_path)
+
+    log(f"  Translating with {provider.provider_name} ({provider.model_name})...")
+
+    hasil_terjemahan = terjemahkan_mosaik(kanvas_mosaik, provider=provider, target_language=target_language, progress=progress)
+
+    if not hasil_terjemahan:
+        log("  [!] Translation failed.")
+        return None
+
+    if config.MANUAL_TRANSLATION_OVERRIDE:
+        hasil_terjemahan.update(config.MANUAL_TRANSLATION_OVERRIDE)
+
+    if on_translations is not None:
+        hasil_terjemahan = on_translations(img, koordinat_jejak, hasil_terjemahan)
+        if hasil_terjemahan is None:
+            log("  [!] Cancelled during translation review.")
+            return None
+
+    render_terjemahan(img_pil_utama, draw_utama, hasil_terjemahan, koordinat_jejak, target_language)
+
     output_path = image_path.rsplit(".", 1)[0] + f"{suffix}.png"
 
     img_pil_utama.save(output_path)
@@ -488,8 +556,11 @@ def _proses_satu_gambar_core(image_path, yolo_model, provider, target_language="
     return output_path
 
 
-def proses_folder(folder_path, yolo_model, provider, target_language="Indonesian"):
+def proses_folder(folder_path, yolo_model, provider, target_language="Indonesian",
+                  progress=None, on_boxes=None, on_translations=None,
+                  should_stop=None, max_workers=3):
     """Processes all supported images in a folder in parallel."""
+    log = progress or print
     supported = config.SUPPORTED_IMAGE_EXTENSIONS
     files = sorted([
         f for f in os.listdir(folder_path)
@@ -497,45 +568,59 @@ def proses_folder(folder_path, yolo_model, provider, target_language="Indonesian
     ])
 
     if not files:
-        print(f"  [!] No supported image files found in: {folder_path}")
+        log(f"  [!] No supported image files found in: {folder_path}")
         return
 
     total = len(files)
-    print(f"\n[Batch] Found {total} images in folder.")
+    log(f"\n[Batch] Found {total} images in folder.")
 
     sukses = 0
     gagal = 0
-    
+    dibatalkan = 0
+
     def process_file(filename, idx):
+        if should_stop and should_stop():
+            return None
+
         file_path = os.path.join(folder_path, filename)
-        
+
         # Resume Check
         lang_code = config.LANG_CODES.get(target_language.lower(), target_language[:2].lower() if target_language else "tr")
         suffix = f"_cypytr_{lang_code}"
         expected_output = file_path.rsplit(".", 1)[0] + f"{suffix}.png"
-        
+
         if os.path.exists(expected_output):
-            print(f"\n[{idx}/{total}] Skipping {filename} (Already translated).")
+            log(f"\n[{idx}/{total}] Skipping {filename} (Already translated).")
             return True
 
-        print(f"\n[{idx}/{total}] Processing {filename}...")
-        hasil = proses_satu_gambar(file_path, yolo_model, provider=provider, target_language=target_language)
+        log(f"\n[{idx}/{total}] Processing {filename}...")
+        hasil = proses_satu_gambar(file_path, yolo_model, provider=provider, target_language=target_language,
+                                   progress=progress, on_boxes=on_boxes, on_translations=on_translations)
         return bool(hasil)
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(process_file, f, idx): f for idx, f in enumerate(files, start=1)}
         for future in concurrent.futures.as_completed(futures):
-            if future.result():
+            result = future.result()
+            if result is None:
+                dibatalkan += 1
+            elif result:
                 sukses += 1
             else:
                 gagal += 1
 
-    print(f"\n[Batch] Completed! Success: {sukses}, Failed: {gagal}, Total: {total}")
+    if dibatalkan:
+        log(f"\n[Batch] Stopped. Success: {sukses}, Failed: {gagal}, Cancelled: {dibatalkan}, Total: {total}")
+    else:
+        log(f"\n[Batch] Completed! Success: {sukses}, Failed: {gagal}, Total: {total}")
 
 
-def mulai_ritual_pdf(pdf_path, yolo_model, provider, target_language="Indonesian"):
+def mulai_ritual_pdf(pdf_path, yolo_model, provider, target_language="Indonesian",
+                     progress=None, on_boxes=None, on_translations=None,
+                     should_stop=None, max_workers=3):
     """Processes a PDF page-by-page concurrently, and binds them back together."""
-    print(f"\nProcessing PDF: {os.path.basename(pdf_path)}")
+    log = progress or print
+    log(f"\nProcessing PDF: {os.path.basename(pdf_path)}")
 
     lang_code = config.LANG_CODES.get(target_language.lower(), "tr")
     suffix = f"_cypytr_{lang_code}"
@@ -547,9 +632,9 @@ def mulai_ritual_pdf(pdf_path, yolo_model, provider, target_language="Indonesian
 
     translated_images_paths = [None] * len(doc)
     total_pages = len(doc)
-    
+
     # Save all pages first
-    print("Extracting PDF pages...")
+    log("Extracting PDF pages...")
     page_paths = []
     for page_num in range(total_pages):
         page = doc.load_page(page_num)
@@ -557,19 +642,23 @@ def mulai_ritual_pdf(pdf_path, yolo_model, provider, target_language="Indonesian
         img_path = os.path.join(temp_dir, f"page_{page_num:04d}.png")
         pix.save(img_path)
         page_paths.append((page_num, img_path))
-        
+
     def process_pdf_page(page_num, img_path):
+        if should_stop and should_stop():
+            return page_num, None
+
         expected_output = img_path.rsplit(".", 1)[0] + f"{suffix}.png"
         if os.path.exists(expected_output):
-            print(f"\n[PDF {page_num + 1}/{total_pages}] Skipping (Already translated).")
+            log(f"\n[PDF {page_num + 1}/{total_pages}] Skipping (Already translated).")
             return page_num, expected_output
-            
-        print(f"\n[PDF {page_num + 1}/{total_pages}] Translating...")
-        hasil_path = proses_satu_gambar(img_path, yolo_model, provider=provider, target_language=target_language)
+
+        log(f"\n[PDF {page_num + 1}/{total_pages}] Translating...")
+        hasil_path = proses_satu_gambar(img_path, yolo_model, provider=provider, target_language=target_language,
+                                        progress=progress, on_boxes=on_boxes, on_translations=on_translations)
         return page_num, hasil_path
 
-    print("Translating pages...")
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+    log("Translating pages...")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [executor.submit(process_pdf_page, p_num, p_path) for p_num, p_path in page_paths]
         for future in concurrent.futures.as_completed(futures):
             p_num, res_path = future.result()
@@ -577,11 +666,11 @@ def mulai_ritual_pdf(pdf_path, yolo_model, provider, target_language="Indonesian
 
     valid_paths = [p for p in translated_images_paths if p]
     if valid_paths:
-        print("Saving final PDF...")
+        log("Saving final PDF...")
         images = [Image.open(img).convert("RGB") for img in valid_paths]
         output_pdf_path = pdf_path.rsplit(".", 1)[0] + f"{suffix}.pdf"
         images[0].save(output_pdf_path, save_all=True, append_images=images[1:])
-        print(f"Done! Saved at: {output_pdf_path}")
+        log(f"Done! Saved at: {output_pdf_path}")
 
     # Cleanup
     shutil.rmtree(temp_dir, ignore_errors=True)
@@ -623,24 +712,27 @@ def setup_rarfile():
             return True
     return False
 
-def mulai_ritual_archive(archive_path, yolo_model, provider, target_language="Indonesian"):
+def mulai_ritual_archive(archive_path, yolo_model, provider, target_language="Indonesian",
+                         progress=None, on_boxes=None, on_translations=None,
+                         should_stop=None, max_workers=3):
     """Processes CBZ/ZIP/CBR/RAR archives."""
-    print(f"\nProcessing Archive: {os.path.basename(archive_path)}")
-    
+    log = progress or print
+    log(f"\nProcessing Archive: {os.path.basename(archive_path)}")
+
     is_rar = archive_path.lower().endswith(('.rar', '.cbr'))
     if is_rar and not setup_rarfile():
-        print("\n[!] Error: 'rarfile' module is not installed or 'unrar' is missing.")
-        print("Please ensure you have WinRAR or 7-Zip installed (or add unrar to PATH).")
-        print("If you just ran the update, please RESTART cypy for the module to load.")
+        log("\n[!] Error: 'rarfile' module is not installed or 'unrar' is missing.")
+        log("Please ensure you have WinRAR or 7-Zip installed (or add unrar to PATH).")
+        log("If you just ran the update, please RESTART cypy for the module to load.")
         return
-        
+
     if is_rar:
-        print("[Info] Archive detected. Output will be saved as .pdf")
+        log("[Info] Archive detected. Output will be saved as .pdf")
 
     temp_dir = os.path.join(config.ROOT_DIR, "cypy_cache", f"archive_temp_{uuid.uuid4().hex[:8]}")
     os.makedirs(temp_dir, exist_ok=True)
-    
-    print("Extracting archive...")
+
+    log("Extracting archive...")
     try:
         if is_rar:
             with rarfile.RarFile(archive_path) as rf:
@@ -649,7 +741,7 @@ def mulai_ritual_archive(archive_path, yolo_model, provider, target_language="In
             with zipfile.ZipFile(archive_path, 'r') as zf:
                 zf.extractall(temp_dir)
     except Exception as e:
-        print(f"[!] Extraction failed: {e}")
+        log(f"[!] Extraction failed: {e}")
         shutil.rmtree(temp_dir, ignore_errors=True)
         return
 
@@ -659,45 +751,49 @@ def mulai_ritual_archive(archive_path, yolo_model, provider, target_language="In
         for f in files:
             if f.lower().endswith(config.SUPPORTED_IMAGE_EXTENSIONS):
                 image_paths.append(os.path.join(root, f))
-                
+
     image_paths.sort()
     total = len(image_paths)
-    
+
     if total == 0:
-        print("[!] No images found in archive.")
+        log("[!] No images found in archive.")
         shutil.rmtree(temp_dir, ignore_errors=True)
         return
-        
-    print(f"Found {total} images. Starting translation...")
-    
+
+    log(f"Found {total} images. Starting translation...")
+
     lang_code = config.LANG_CODES.get(target_language.lower(), target_language[:2].lower() if target_language else "tr")
     suffix = f"_cypytr_{lang_code}"
-    
+
     translated_paths = []
 
     def process_arch_file(img_path, idx):
+        if should_stop and should_stop():
+            return img_path
+
         expected_output = img_path.rsplit(".", 1)[0] + f"{suffix}.png"
         if os.path.exists(expected_output):
-            print(f"\n[{idx}/{total}] Skipping (Already translated).")
+            log(f"\n[{idx}/{total}] Skipping (Already translated).")
             return expected_output
-            
-        print(f"\n[{idx}/{total}] Translating {os.path.basename(img_path)}...")
-        res = proses_satu_gambar(img_path, yolo_model, provider=provider, target_language=target_language)
+
+        log(f"\n[{idx}/{total}] Translating {os.path.basename(img_path)}...")
+        res = proses_satu_gambar(img_path, yolo_model, provider=provider, target_language=target_language,
+                                 progress=progress, on_boxes=on_boxes, on_translations=on_translations)
         return res if res else img_path # fallback to original if failed
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(process_arch_file, p, i): i for i, p in enumerate(image_paths, start=1)}
         for future in concurrent.futures.as_completed(futures):
             translated_paths.append(future.result())
-            
+
     # Repack into PDF
     valid_paths = [p for p in translated_paths if p and os.path.exists(p)]
     if valid_paths:
         output_pdf_path = archive_path.rsplit(".", 1)[0] + f"{suffix}.pdf"
-        print(f"\nCombining translated images into PDF...")
+        log(f"\nCombining translated images into PDF...")
         images = [Image.open(img).convert("RGB") for img in valid_paths]
         images[0].save(output_pdf_path, save_all=True, append_images=images[1:])
-        print(f"Done! Saved at: {output_pdf_path}")
-                
+        log(f"Done! Saved at: {output_pdf_path}")
+
     shutil.rmtree(temp_dir, ignore_errors=True)
 

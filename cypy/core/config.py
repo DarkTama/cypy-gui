@@ -145,6 +145,14 @@ MANUAL_TRANSLATION_OVERRIDE = {}
 
 
 # ==========================================
+# ✦ GLOSSARY - Consistent translations for names/terms across pages ♪ ✦
+# ==========================================
+# e.g. {"キリト": "Kirito", "senpai": "senpai"}
+# Injected into the translation prompt; persisted in data/settings.json.
+GLOSSARY = {}
+
+
+# ==========================================
 # ✦ PROVIDER HELPERS - Utility functions for provider management~ ♪ ✦
 # ==========================================
 def get_provider_config(provider_name: str = ""):
@@ -284,7 +292,8 @@ def load_settings():
     global OPENROUTER_API_KEY, MODEL_OPENROUTER
     global ZEN_API_KEY, MODEL_ZEN
     global CUSTOM_API_KEY, CUSTOM_BASE_URL, MODEL_CUSTOM
-    
+    global GLOSSARY
+
     if os.path.exists(SETTINGS_FILE):
         try:
             with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
@@ -309,7 +318,11 @@ def load_settings():
             CUSTOM_API_KEY = data.get("custom_api_key", CUSTOM_API_KEY)
             CUSTOM_BASE_URL = data.get("custom_base_url", CUSTOM_BASE_URL)
             MODEL_CUSTOM = data.get("model_custom", MODEL_CUSTOM)
-            
+
+            glossary = data.get("glossary", GLOSSARY)
+            if isinstance(glossary, dict):
+                GLOSSARY = glossary
+
             # Synchronize environment variables for the session
             if GEMINI_API_KEY: os.environ["GEMINI_API_KEY"] = GEMINI_API_KEY
             if OPENAI_API_KEY: os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
@@ -338,7 +351,8 @@ def save_settings():
         "model_zen": MODEL_ZEN,
         "custom_api_key": CUSTOM_API_KEY,
         "custom_base_url": CUSTOM_BASE_URL,
-        "model_custom": MODEL_CUSTOM
+        "model_custom": MODEL_CUSTOM,
+        "glossary": GLOSSARY
     }
     try:
         with open(SETTINGS_FILE, "w", encoding="utf-8") as f:

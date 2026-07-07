@@ -20,8 +20,15 @@ dependencies = [
     "rarfile"
 ]
 
+[project.optional-dependencies]
+gui = [
+    "customtkinter",
+    "tkinterdnd2"
+]
+
 [project.scripts]
 cypy = "cypy.app:main"
+cypy-gui = "cypy.gui:main"
 
 [tool.setuptools.packages.find]
 include = ["cypy*"]
