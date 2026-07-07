@@ -22,9 +22,18 @@ ICON_PATH = ROOT_DIR / FAVICON_PATH \
 
 APP_ENTRY_POINT = ROOT_DIR / APP_NAME / "app.py"
 
+# GUI build variant (this fork)
+GUI_APP_NAME = f"{APP_NAME}-gui"
+GUI_ENTRY_POINT = ROOT_DIR / APP_NAME / "gui" / "__main__.py"
+
 EXEC_PATH = sys.executable
 REQUIRED_DEPS = {
     "pyinstaller"
+}
+GUI_REQUIRED_DEPS = {
+    "pyinstaller",
+    "customtkinter",
+    "tkinterdnd2",
 }
 
 EXTRA_FILES = {
@@ -99,9 +108,15 @@ def install_dependencies(deps: Iterable[str]):
         print(f"[Build] Failed to install {', '.join(deps)}: {e}", file=sys.stderr)
         sys.exit(e.returncode)
 
-def run_build():
-    available_deps = check_dependencies(REQUIRED_DEPS)
-    missing_deps = REQUIRED_DEPS - set(available_deps)
+def run_build(gui: bool = False):
+    app_name = GUI_APP_NAME if gui else APP_NAME
+    entry_point = GUI_ENTRY_POINT if gui else APP_ENTRY_POINT
+    required_deps = GUI_REQUIRED_DEPS if gui else REQUIRED_DEPS
+
+    print(f"[Build] Building {'GUI' if gui else 'CLI'} variant: {app_name}")
+
+    available_deps = check_dependencies(required_deps)
+    missing_deps = required_deps - set(available_deps)
     if missing_deps:
         missing_deps_sorted = sorted(missing_deps)
         print(f"[Build] Missing dependencies: {', '.join(missing_deps_sorted)}")
@@ -132,23 +147,32 @@ def run_build():
         EXEC_PATH, "-m", "PyInstaller",
         "--noconfirm",
         "--onedir",
-        "--console",
-        f"--name={APP_NAME}",
+        "--windowed" if gui else "--console",
+        f"--name={app_name}",
         f"--distpath={DIST_DIR}",
         f"--workpath={build_temp_dir}",
         f"--add-data={ASSETS_DIR}{data_sep}assets",
         "--exclude-module=pandas",
         "--exclude-module=tensorboard",
-        "--exclude-module=tkinter",
         "--exclude-module=IPython",
         "--exclude-module=torch",
         "--exclude-module=ultralytics",
     ]
 
+    if gui:
+        # customtkinter ships theme JSONs, tkinterdnd2 ships the tkdnd binaries;
+        # neither is picked up by import analysis alone
+        cmd += [
+            "--collect-all=customtkinter",
+            "--collect-all=tkinterdnd2",
+        ]
+    else:
+        cmd.append("--exclude-module=tkinter")
+
     if is_favicon_exist:
         cmd.append(f"--icon={ICON_PATH}")
 
-    cmd.append(str(APP_ENTRY_POINT))
+    cmd.append(str(entry_point))
 
     print(f"[Build] Running PyInstaller compilation command:\n{' '.join(cmd)}")
     try:
@@ -161,14 +185,14 @@ def run_build():
         # Clean up temporary build spec/work path files
         if build_temp_dir.exists():
             shutil.rmtree(build_temp_dir, ignore_errors=True)
-        spec_file = ROOT_DIR / f"{APP_NAME}.spec"
+        spec_file = ROOT_DIR / f"{app_name}.spec"
         if spec_file.is_file():
             try: spec_file.unlink()
             except Exception: pass
 
-    package_release(ROOT_DIR)
+    package_release(ROOT_DIR, app_name=app_name)
 
-def package_release(project_root: Union[str, Path]):
+def package_release(project_root: Union[str, Path], app_name: str = APP_NAME):
     project_root = Path(project_root).absolute()
     RELEASES_DIR.mkdir(parents=True, exist_ok=True)
     DIST_DIR.mkdir(parents=True, exist_ok=True)
@@ -179,17 +203,17 @@ def package_release(project_root: Union[str, Path]):
 
     # Naming convention matching xidown: cypy-[version]-[os]-[arch][-portable].zip
     if os_name == "windows":
-        zip_name = f"{APP_NAME}-{APP_VER}-{os_name}-{arch}-portable.zip"
+        zip_name = f"{app_name}-{APP_VER}-{os_name}-{arch}-portable.zip"
     else:
-        zip_name = f"{APP_NAME}-{APP_VER}-{os_name}-{arch}.zip"
+        zip_name = f"{app_name}-{APP_VER}-{os_name}-{arch}.zip"
 
     zip_path = RELEASES_DIR / zip_name
     print(f"[Build] Packaging application for {os_name} ({arch})...")
 
-    pyinstaller_output = DIST_DIR / APP_NAME
+    pyinstaller_output = DIST_DIR / app_name
     if os_name == "macos":
         # PyInstaller on macOS creates cypy.app bundle in the dist path
-        app_bundle = DIST_DIR / f"{APP_NAME}.app"
+        app_bundle = DIST_DIR / f"{app_name}.app"
         if app_bundle.is_dir():
             pyinstaller_output = app_bundle
 
@@ -203,7 +227,7 @@ def package_release(project_root: Union[str, Path]):
 
     print(f"[Build] Found PyInstaller output at: {pyinstaller_output}")
 
-    app_folder_path = DIST_DIR / f"{APP_NAME}_pkg_temp"
+    app_folder_path = DIST_DIR / f"{app_name}_pkg_temp"
     if app_folder_path.is_dir():
         try: shutil.rmtree(app_folder_path)
         except Exception as e:
@@ -250,7 +274,7 @@ def package_release(project_root: Union[str, Path]):
         
         try:
             print(f"[Build] Zipping folder: {app_folder_path} to {zip_path}...")
-            created_zip = safe_zip_directory(app_folder_path, zip_path)
+            created_zip = safe_zip_directory(app_folder_path, zip_path, app_name=app_name)
             created_zip_path = Path(created_zip)
             if not created_zip_path.is_file():
                 raise FileNotFoundError(f"[Build] Expected archive not found: {created_zip}")
@@ -272,14 +296,14 @@ def package_release(project_root: Union[str, Path]):
     finally:
         cleanup()
 
-def safe_zip_directory(folder_path: Union[str, Path], zip_path: Union[str, Path]) -> str:
+def safe_zip_directory(folder_path: Union[str, Path], zip_path: Union[str, Path], app_name: str = APP_NAME) -> str:
     folder_path = Path(folder_path).resolve()
     zip_path = Path(zip_path).resolve()
 
     if not folder_path.is_dir():
         raise NotADirectoryError(folder_path)
 
-    archive_root = folder_path.parent / APP_NAME
+    archive_root = folder_path.parent / app_name
     folder_path.rename(archive_root)
     print(f"[Build] Renamed '{folder_path}' -> '{archive_root}'")
 
@@ -297,4 +321,15 @@ def safe_zip_directory(folder_path: Union[str, Path], zip_path: Union[str, Path]
         print(f"[Build] Renamed '{archive_root}' -> '{folder_path}'")
 
 if __name__ == "__main__":
-    run_build()
+    import argparse
+
+    parser = argparse.ArgumentParser(description=f"Build {APP_NAME} standalone packages")
+    parser.add_argument("--gui", action="store_true", help="build the GUI app instead of the CLI")
+    parser.add_argument("--all", action="store_true", help="build both the CLI and GUI apps")
+    args = parser.parse_args()
+
+    if args.all:
+        run_build(gui=False)
+        run_build(gui=True)
+    else:
+        run_build(gui=args.gui)

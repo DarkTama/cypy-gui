@@ -71,12 +71,30 @@ Download the pre-compiled package for your OS from the [Releases](https://github
    python -m cypy
    ```
 
+### GUI Version (this fork)
+This fork adds a desktop GUI alongside the CLI. Install with the GUI extras and launch it:
+```bash
+pip install -e ".[gui]"
+cypy-gui          # or: python -m cypy.gui
+```
+GUI-only features:
+- **Detection review** — after YOLO runs, inspect the detected bubbles on a canvas: delete false positives, draw missed bubbles, or drag boxes into place before anything is sent to the API.
+- **Translation editing** — fix mistranslations in editable fields per bubble, then re-render. No second API call.
+- **Glossary** — pin consistent translations for character names and recurring terms; injected into every prompt and saved in `data/settings.json`.
+- **Layout tweaks panel** — the CLI `tweak` parameters as sliders and switches.
+- Drag-and-drop input, live progress log, cancel button, and all provider/language settings in a sidebar.
+
 ### Option 3: Building Standalone Executable (Using PyInstaller)
 If you want to compile `cypy` into a standalone, optimized directory package yourself, run the build script:
 ```bash
-python build.py
+python build.py          # CLI build (same as upstream)
+python build.py --gui    # GUI build (this fork)
+python build.py --all    # both
 ```
-This requires **PyInstaller** (which will be installed automatically if missing) and will output the ready-to-run `.zip` package inside the `releases/` directory.
+This requires **PyInstaller** (which will be installed automatically if missing) and will output the ready-to-run `.zip` package(s) inside the `releases/` directory.
+
+### Releases (this fork)
+Tagged pushes (`v*`) — or a manual run of the **release** workflow — build both the CLI and GUI packages for Windows, Linux, and macOS on GitHub Actions and attach all six zips to a GitHub Release automatically. To cut a release: bump `APP_VER` in [cypy/core/version.py](cypy/core/version.py), then push a matching tag (e.g. `git tag v0.2507 && git push --tags`).
 
 ---
 

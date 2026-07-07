@@ -1,0 +1,109 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write # release job creates the Release and uploads assets
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: windows
+          - os: ubuntu-latest
+            name: linux
+          - os: macos-latest
+            name: macos
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[gui]" pyinstaller
+
+      # Builds both variants and drops the zips into releases/:
+      #   cypy-<ver>-<os>-<arch>[-portable].zip      (CLI, same as upstream)
+      #   cypy-gui-<ver>-<os>-<arch>[-portable].zip  (GUI, this fork)
+      - name: Build CLI + GUI packages
+        run: python build.py --all
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.name }}
+          path: releases/*.zip
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Tag pushes release under the pushed tag; manual dispatch derives the
+      # tag from cypy/core/version.py (APP_VER already includes the leading v)
+      # and creates it at HEAD.
+      - name: Resolve release tag
+        id: tag
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            tag='${{ github.ref_name }}'
+          else
+            tag=$(sed -n 's/^APP_VER = "\(.*\)"/\1/p' cypy/core/version.py)
+          fi
+          if [ -z "$tag" ]; then
+            echo "Could not resolve a release tag" >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: packages
+          merge-multiple: true
+
+      - name: Create Release and upload assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag='${{ steps.tag.outputs.tag }}'
+
+          cat > notes.md <<'EOF'
+          Standalone builds for Windows, Linux, and macOS — no Python required.
+
+          Assets:
+          - `cypy-gui-*` — **GUI version** (this fork): drag-and-drop translation with
+            detection review, translation editing, and a glossary. Unzip and run `cypy-gui`.
+          - `cypy-*` — CLI version, same as the upstream project. Unzip and run `cypy`.
+
+          Notes:
+          - Builds are unsigned — Windows SmartScreen may warn on first run
+            ("More info" -> "Run anyway").
+          - Gemini/OpenAI/OpenRouter need an API key on first run; Zen works without one.
+          EOF
+
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" packages/*.zip --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$tag" packages/*.zip \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "cypy $tag" \
+              --notes-file notes.md
+          fi
