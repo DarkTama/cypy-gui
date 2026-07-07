@@ -216,6 +216,12 @@ def package_release(project_root: Union[str, Path], app_name: str = APP_NAME):
         app_bundle = DIST_DIR / f"{app_name}.app"
         if app_bundle.is_dir():
             pyinstaller_output = app_bundle
+            # Windowed builds also leave a bare onedir folder with the same
+            # name next to the .app; drop it so the zip staging rename below
+            # can reuse the name without colliding
+            bare_dir = DIST_DIR / app_name
+            if bare_dir.is_dir():
+                shutil.rmtree(bare_dir, ignore_errors=True)
 
     if not pyinstaller_output or not pyinstaller_output.is_dir():
         print(
@@ -235,13 +241,17 @@ def package_release(project_root: Union[str, Path], app_name: str = APP_NAME):
     app_folder_path.mkdir(exist_ok=True)
 
     # Copy files
-    for item in os.listdir(pyinstaller_output):
-        s = pyinstaller_output / item
-        d = app_folder_path / item
-        if s.is_dir():
-            shutil.copytree(s, d, symlinks=True)
-        else:
-            shutil.copy2(s, d, follow_symlinks=False)
+    if pyinstaller_output.suffix == ".app":
+        # Keep the macOS bundle intact so it stays double-clickable after unzip
+        shutil.copytree(pyinstaller_output, app_folder_path / pyinstaller_output.name, symlinks=True)
+    else:
+        for item in os.listdir(pyinstaller_output):
+            s = pyinstaller_output / item
+            d = app_folder_path / item
+            if s.is_dir():
+                shutil.copytree(s, d, symlinks=True)
+            else:
+                shutil.copy2(s, d, follow_symlinks=False)
     print("[Build] Copied all compiled files and folders into release folder.")
 
     # Copy extra files
